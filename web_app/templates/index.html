@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datos de Sensores</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Estilos originales */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+            text-align: center;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+        }
+        label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        select, input[type="date"], button {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin: 10px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table th, table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        table th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        table tbody tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        table tbody tr:hover {
+            background-color: #ddd;
+        }
+        canvas {
+            margin: 20px 0;
+        }
+    </style>
+    <script>
+        async function cargarSensores() {
+            try {
+                const response = await fetch('/ver_datos');
+                const datos = await response.json();
+
+                const idsensorSelect = document.getElementById('idsensor-select');
+                idsensorSelect.innerHTML = ''; // Limpiar opciones previas
+
+                const sensores = [...new Set(datos.map(dato => dato.idsensor))];
+                sensores.forEach(sensor => {
+                    const option = document.createElement('option');
+                    option.value = sensor;
+                    option.textContent = sensor;
+                    idsensorSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Error al cargar sensores:", error);
+            }
+        }
+
+        async function cargarDatos() {
+            try {
+                const idsensor = document.getElementById('idsensor-select').value;
+                const fecha = document.getElementById('fecha-select').value;
+
+                const response = await fetch('/ver_datos');
+                const datos = await response.json();
+
+                const datosFiltrados = datos.filter(dato => dato.idsensor === idsensor && dato.fecha === fecha);
+
+                const tabla = document.getElementById('tabla-datos');
+                tabla.innerHTML = '';
+
+                if (datosFiltrados.length > 0) {
+                    datosFiltrados.forEach(dato => {
+                        const fila = `
+                            <tr>
+                                <td>${dato.idsensor}</td>
+                                <td>${dato.oxigeno}</td>
+                                <td>${dato.ritmo}</td>
+                                <td>${dato.fecha}</td>
+                                <td>${dato.hora}</td>
+                            </tr>
+                        `;
+                        tabla.innerHTML += fila;
+                    });
+
+                    actualizarGrafica(datosFiltrados, 'oxigeno');
+                    actualizarGrafica(datosFiltrados, 'ritmo');
+                } else {
+                    tabla.innerHTML = '<tr><td colspan="5">No hay datos disponibles para este sensor y fecha</td></tr>';
+                }
+            } catch (error) {
+                console.error("Error al cargar datos:", error);
+                document.getElementById('tabla-datos').innerHTML = '<tr><td colspan="5">Error al cargar datos</td></tr>';
+            }
+        }
+
+        function actualizarGrafica(datos, tipo) {
+            const ctx = document.getElementById(`grafica-${tipo}`).getContext('2d');
+            const horas = datos.map(dato => dato.hora);
+            const valores = datos.map(dato => dato[tipo]);
+
+            if (window[`grafica_${tipo}`]) {
+                window[`grafica_${tipo}`].data.labels = horas;
+                window[`grafica_${tipo}`].data.datasets[0].data = valores;
+                window[`grafica_${tipo}`].update();
+            } else {
+                window[`grafica_${tipo}`] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: horas,
+                        datasets: [{
+                            label: `Valores de ${tipo}`,
+                            data: valores,
+                            borderColor: tipo === 'oxigeno' ? 'blue' : 'green',
+                            borderWidth: 2,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { title: { display: true, text: 'Hora' } },
+                            y: { title: { display: true, text: tipo === 'oxigeno' ? 'Saturación (%)' : 'Ritmo (lpm)' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        window.onload = () => {
+            cargarSensores();
+        };
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Datos de Oxígeno y Ritmo Cardiaco</h1>
+
+        <div>
+            <label for="idsensor-select">Seleccionar Sensor:</label>
+            <select id="idsensor-select" onchange="cargarDatos()">
+                <option value="">Selecciona un sensor</option>
+            </select>
+
+            <label for="fecha-select">Seleccionar Fecha:</label>
+            <input type="date" id="fecha-select" onchange="cargarDatos()">
+        </div>
+
+        <button onclick="cargarDatos()">Actualizar Estado</button>
+
+        <h2>Gráfica de Oxígeno</h2>
+        <canvas id="grafica-oxigeno" width="400" height="200"></canvas>
+
+        <h2>Gráfica de Ritmo Cardiaco</h2>
+        <canvas id="grafica-ritmo" width="400" height="200"></canvas>
+
+        <h2>Datos Tabulados</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID Sensor</th>
+                    <th>Oxígeno</th>
+                    <th>Ritmo</th>
+                    <th>Fecha</th>
+                    <th>Hora</th>
+                </tr>
+            </thead>
+            <tbody id="tabla-datos">
+                <tr>
+                    <td colspan="5">Selecciona un sensor y una fecha para ver los datos</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
